@@ -113,7 +113,9 @@ var session_fetch = (function(win, doc, nav){
       return {
         browser: this.search(this.data.browser),
         version: this.search(nav.userAgent) || this.search(nav.appVersion),
-        os: this.search(this.data.os)
+        os: this.search(this.data.os),
+        oscpu: this.search(this.data.oscpu),
+        platform: this.search(this.data.platform)
     } },
     search: function(data) {
       if (typeof data === "object"){
@@ -159,7 +161,32 @@ var session_fetch = (function(win, doc, nav){
         { string: nav.userAgent, subString: "iPad", identity: "iPad" },
         { string: nav.userAgent, subString: "Android", identity: "Android" },
         { string: nav.platform, subString: "Linux", identity: "Linux" }
-      ]}
+      ],
+      oscpu: [
+        { string: nav.userAgent, subString: "Win16", identity: "3.11" },
+        { string: nav.userAgent, subString: "Windows 95", identity: "95" },
+        { string: nav.userAgent, subString: "Win95", identity: "95" },
+        { string: nav.userAgent, subString: "Windows_95", identity: "95" },
+        { string: nav.userAgent, subString: "Windows 98", identity: "98" },
+        { string: nav.userAgent, subString: "Win98", identity: "98" },
+        { string: nav.userAgent, subString: "Windows NT 5.0", identity: "2000" },
+        { string: nav.userAgent, subString: "Windows 2000", identity: "2000" },
+        { string: nav.userAgent, subString: "Windows NT 5.1", identity: "XP" },
+        { string: nav.userAgent, subString: "Windows XP", identity: "XP" },
+        { string: nav.userAgent, subString: "Windows NT 5.2", identity: "Server 2003" },
+        { string: nav.userAgent, subString: "Windows NT 6.0", identity: "Vista" },
+        { string: nav.userAgent, subString: "Windows NT 6.1", identity: "7" },
+        { string: nav.userAgent, subString: "Windows NT 4.0", identity: "NT 4.0" },
+        { string: nav.userAgent, subString: "Windows ME", identity: "ME" },
+        { string: nav.userAgent, subString: "", identity: "sconosciuto" }
+      ],
+      platform: [
+         { string: nav.userAgent, subString: "WOW64", identity: "64 bit" },
+         { string: nav.userAgent, subString: "Win64", identity: "64 bit" },
+         { string: nav.userAgent, subString: "MacIntel", identity: "64 bit" },
+         { string: nav.userAgent, subString: "", identity: "32 bit" }
+      ]},
+
   };
 
   var modules = {
@@ -205,7 +232,7 @@ var session_fetch = (function(win, doc, nav){
     },
     plugins: function(){
       var check_plugin = function(name){
-        if (nav.plugins){
+        if (nav.plugins && nav.plugins.length > 0){
           var plugin, i = 0, length = nav.plugins.length;
           for (; i < length; i++ ){
             plugin = nav.plugins[i];
@@ -213,7 +240,20 @@ var session_fetch = (function(win, doc, nav){
               return true;
             } }
           return false;
-        } return false;
+        }
+        else{
+          //IE9 does not return navigator.plugins, so look at ActiveXObjects instead
+          if (name=="flash"){
+            var flashObj = null;
+            try { flashObj = new ActiveXObject('ShockwaveFlash.ShockwaveFlash'); } catch (ex) { return false; }
+            if (flashObj != null) {
+                var fV;
+                try { fV = flashObj.GetVariable("$version"); } catch (err) { return false; }
+                return true;
+            }
+          }
+        }
+        return false;
       };
       return {
         flash:       check_plugin("flash"),
@@ -275,6 +315,10 @@ var session_fetch = (function(win, doc, nav){
         nav.geolocation.getCurrentPosition(function(pos){
           pos.source = 'html5';
           callback(pos);
+          util.set_cookie(
+            options.location_cookie,
+            util.package_obj(pos),
+            options.location_cookie_timeout * 60 * 60 * 1000);
         }, function(err) {
           if (options.gapi_location){
             modules.gapi_location()(callback);
@@ -308,7 +352,7 @@ var session_fetch = (function(win, doc, nav){
     ipinfodb_location: function(api_key){
       return function (callback){
         var location_cookie = util.get_obj(options.location_cookie);
-        if (!location_cookie && location_cookie.source === 'ipinfodb'){ 
+        if (location_cookie && location_cookie.source === 'ipinfodb'){ callback(location_cookie); }
         win.ipinfocb = function(data){
           if (data.statusCode === "OK"){
             data.source = "ipinfodb";
@@ -322,7 +366,6 @@ var session_fetch = (function(win, doc, nav){
             else { callback({error: true, source: "ipinfodb", message: data.statusMessage}); }
           }};
         util.embed_script("http://api.ipinfodb.com/v3/ip-city/?key=" + api_key + "&format=json&callback=ipinfocb");
-        } else { callback(location_cookie); }
       }}
   };
 
@@ -382,7 +425,7 @@ var session_fetch = (function(win, doc, nav){
     },
     get_obj: function(cookie_name){
       var obj;
-      try { obj = JSON.parse(util.get_cookie(cookie_name)); } catch(e){}
+      try { obj = JSON.parse(util.get_cookie(cookie_name)); } catch(e){};
       if (obj && obj.version == API_VERSION){
         delete obj.version; return obj;
       }
